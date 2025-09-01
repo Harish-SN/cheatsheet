@@ -1,0 +1,274 @@
+<h2>Nginx</h2>
+<p>Install, manage service, reverse proxy (Node/PM2), HTTPS with Certbot, redirects, websockets, caching, rate limiting,
+    security headers, load balancing, and logs.</p>
+<div class="grid">
+
+    <!-- Install & Service -->
+    <details open>
+        <summary>Install & Service (Amazon Linux dnf)</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-install">Copy</button>
+            <pre id="nginx-install"><code># Install on Amazon Linux 2023+
+sudo dnf install -y nginx
+
+# Enable and start
+sudo systemctl enable nginx
+sudo systemctl start nginx
+sudo systemctl status nginx
+
+# Main config & sites (common locations)
+# /etc/nginx/nginx.conf                (main)
+# /etc/nginx/conf.d/*.conf             (virtual hosts)
+# Default web root: /usr/share/nginx/html
+
+# Test config & reload safely
+sudo nginx -t
+sudo systemctl reload nginx
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Basic reverse proxy -->
+    <details>
+        <summary>Reverse Proxy → PM2 app on :3000</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-proxy">Copy</button>
+            <pre id="nginx-proxy"><code># Create a vhost (edit the server_name)
+sudo tee /etc/nginx/conf.d/app.conf &gt;/dev/null &lt;&lt;'CONF'
+server {
+  listen 80;
+  server_name example.com;
+
+  # Redirect www to apex (optional)
+  if ($host = www.example.com) { return 301 http://example.com$request_uri; }
+
+  # Increase headers/body if needed
+  client_max_body_size 20m;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+
+    # Preserve forwarding info
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # WebSockets
+    proxy_set_header Upgrade           $http_upgrade;
+    proxy_set_header Connection        $connection_upgrade;
+  }
+}
+CONF
+
+# Map 'Connection: upgrade' for WS
+sudo tee /etc/nginx/conf.d/_map.conf &gt;/dev/null &lt;&lt;'CONF'
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+CONF
+
+# Test & reload
+sudo nginx -t && sudo systemctl reload nginx
+</code></pre>
+        </div>
+    </details>
+
+    <!-- HTTPS / Certbot -->
+    <details>
+        <summary>HTTPS with Certbot (Let's Encrypt)</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-certbot">Copy</button>
+            <pre id="nginx-certbot"><code># Recommended method (works on Amazon Linux 2023 via snapd)
+sudo dnf install -y snapd
+sudo systemctl enable --now snapd.socket
+sudo ln -s /var/lib/snapd/snap /snap
+
+# Install certbot & nginx plugin
+sudo snap install core && sudo snap refresh core
+sudo snap install --classic certbot
+sudo ln -s /snap/bin/certbot /usr/bin/certbot
+
+# Obtain & install cert (auto-edits Nginx)
+sudo certbot --nginx -d example.com -d www.example.com
+
+# Auto-renew runs via systemd timer (snap). Test:
+sudo certbot renew --dry-run
+</code></pre>
+        </div>
+    </details>
+
+    <!-- HTTP -> HTTPS redirect -->
+    <details>
+        <summary>Force HTTP → HTTPS Redirect</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-redirect">Copy</button>
+            <pre id="nginx-redirect"><code># Add this 80-server to redirect everything to https
+sudo tee /etc/nginx/conf.d/redirect.conf &gt;/dev/null &lt;&lt;'CONF'
+server {
+  listen 80;
+  server_name example.com www.example.com;
+  return 301 https://example.com$request_uri;
+}
+CONF
+
+sudo nginx -t && sudo systemctl reload nginx
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Security headers -->
+    <details>
+        <summary>Security Headers (HSTS, CSP ready)</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-sec-headers">Copy</button>
+            <pre id="nginx-sec-headers"><code># Include inside your HTTPS server { ... }
+# Adjust CSP for your assets (the example is permissive for self)
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+# Example baseline CSP (customize!):
+# add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'" always;
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Gzip / Brotli -->
+    <details>
+        <summary>Compression (gzip / brotli)</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-compress">Copy</button>
+            <pre id="nginx-compress"><code># Enable gzip (safe defaults) in http { } or server { }
+gzip on;
+gzip_comp_level 5;
+gzip_min_length 1024;
+gzip_vary on;
+gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
+# Optional: Brotli (needs nginx-mod-brotli, may require building or repo)
+# brotli on;
+# brotli_comp_level 5;
+# brotli_types text/plain text/css application/javascript application/json image/svg+xml;
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Caching -->
+    <details>
+        <summary>Static & Proxy Caching</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-cache">Copy</button>
+            <pre id="nginx-cache"><code># Static assets cache (inside location /assets or similar)
+location /assets/ {
+  root /var/www/myapp/public;
+  access_log off;
+  expires 7d;
+  add_header Cache-Control "public, max-age=604800, immutable";
+}
+
+# Simple proxy cache (per upstream)
+proxy_cache_path /var/cache/nginx/myapp levels=1:2 keys_zone=myapp_cache:10m max_size=1g inactive=60m use_temp_path=off;
+
+# In the server/location that proxies:
+location /api/ {
+  proxy_pass http://127.0.0.1:3000;
+
+  proxy_cache myapp_cache;
+  proxy_cache_valid 200 302 10m;
+  proxy_cache_valid 404      1m;
+  add_header X-Proxy-Cache $upstream_cache_status;
+}
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Rate limiting -->
+    <details>
+        <summary>Rate Limiting</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-ratelimit">Copy</button>
+            <pre id="nginx-ratelimit"><code># Define zone in http { }
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+
+# Apply to a path (bursts allowed)
+location /api/ {
+  limit_req zone=api_limit burst=20 nodelay;
+  proxy_pass http://127.0.0.1:3000;
+}
+</code></pre>
+        </div>
+    </details>
+
+    <!-- WebSockets -->
+    <details>
+        <summary>WebSockets Proxy</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-ws">Copy</button>
+            <pre id="nginx-ws"><code># Ensure these headers for WS endpoints
+location /socket.io/ {
+  proxy_pass http://127.0.0.1:3000;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection $connection_upgrade;
+  proxy_set_header Host $host;
+}
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Load balancing -->
+    <details>
+        <summary>Upstream Load Balancing (Round-robin)</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-lb">Copy</button>
+            <pre id="nginx-lb"><code># Define upstream in http { }
+upstream my_backend {
+  server 127.0.0.1:3001;
+  server 127.0.0.1:3002;
+  keepalive 32;
+}
+
+server {
+  listen 80;
+  server_name example.com;
+
+  location / {
+    proxy_pass http://my_backend;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+}
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Logs & Troubleshooting -->
+    <details>
+        <summary>Logs & Troubleshooting</summary>
+        <div class="code">
+            <button class="copy" data-target="nginx-logs">Copy</button>
+            <pre id="nginx-logs"><code># Access / Error logs (default)
+sudo tail -f /var/log/nginx/access.log
+sudo tail -f /var/log/nginx/error.log
+
+# Grep slow / large responses (example)
+sudo awk '$9 ~ /200|499|500|502|503|504/ {print $0}' /var/log/nginx/access.log | tail
+
+# Validate config & show version/build modules
+nginx -t
+nginx -V
+
+# Common SELinux/permission issue: ensure the web root & cert files are readable by nginx user
+# For Amazon Linux, nginx runs as user 'nginx' (see /etc/nginx/nginx.conf).
+</code></pre>
+        </div>
+    </details>
+
+</div>

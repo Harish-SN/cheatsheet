@@ -1,0 +1,341 @@
+<h2>Git & Version Control</h2>
+<p>Everyday Git: init/clone, branching/merging, remotes, stash, rebase, undo, cherry-pick, tags, diffs, bisect,
+    submodules, sparse checkout, LFS, config/SSH/signing, ignore/clean, hooks, and recovery.</p>
+<div class="grid">
+
+    <!-- Basics -->
+    <details open>
+        <summary>Basics</summary>
+        <div class="code">
+            <button class="copy" data-target="git-basics">Copy</button>
+            <pre id="git-basics"><code># New repo / existing
+git init
+git clone https://github.com/user/repo.git
+git clone git@github.com:user/repo.git
+
+# Status / stage / commit
+git status
+git add file1 dir/
+git commit -m "feat: initial commit"
+
+# See history
+git log --oneline --decorate --graph --all
+git show HEAD~1
+
+# Rename default branch
+git branch -m main
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Branching & Merging -->
+    <details>
+        <summary>Branching & Merging</summary>
+        <div class="code">
+            <button class="copy" data-target="git-branch-merge">Copy</button>
+            <pre id="git-branch-merge"><code># Create / switch
+git branch feature/x
+git switch feature/x     # or: git checkout feature/x
+git switch -c hotfix/y   # create and switch
+
+# Merge (fast-forward or no-ff)
+git switch main
+git merge feature/x
+git merge --no-ff feature/x -m "merge: feature/x"
+
+# Delete branch
+git branch -d feature/x       # safe (merged)
+git branch -D feature/x       # force
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Remotes & Sync -->
+    <details>
+        <summary>Remotes & Sync</summary>
+        <div class="code">
+            <button class="copy" data-target="git-remote">Copy</button>
+            <pre id="git-remote"><code># Add / inspect
+git remote add origin git@github.com:user/repo.git
+git remote -v
+
+# Push / set upstream
+git push -u origin main
+git push
+git pull --rebase          # linearize fetch + apply
+
+# Track another branch
+git switch -c feature/x origin/feature/x
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Stash & Worktree -->
+    <details>
+        <summary>Stash & Worktree</summary>
+        <div class="code">
+            <button class="copy" data-target="git-stash-worktree">Copy</button>
+            <pre id="git-stash-worktree"><code># Stash current changes
+git stash push -m "wip: refactor"
+git stash list
+git stash show -p stash@{0}
+git stash pop           # apply + drop
+git stash apply         # apply only
+git stash drop stash@{0}
+
+# Multiple working dirs (hotfix while feature continues)
+git worktree add ../repo-hotfix hotfix/urgent
+git worktree list
+git worktree remove ../repo-hotfix
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Rebase & History -->
+    <details>
+        <summary>Rebase & History Rewrite (safe patterns)</summary>
+        <div class="code">
+            <button class="copy" data-target="git-rebase">Copy</button>
+            <pre id="git-rebase"><code># Rebase feature on top of main
+git switch feature/x
+git fetch origin
+git rebase origin/main
+
+# Interactive rebase (squash/rename/reorder)
+git rebase -i HEAD~5    # pick, squash, fixup, reword
+
+# Abort / continue conflict resolution
+git rebase --abort
+git add .
+git rebase --continue
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Undo / Restore -->
+    <details>
+        <summary>Undo: restore / reset / revert</summary>
+        <div class="code">
+            <button class="copy" data-target="git-undo">Copy</button>
+            <pre id="git-undo"><code># Unstage file (keep working copy)
+git restore --staged file.txt
+
+# Discard local changes (danger!)
+git restore --worktree --source=HEAD -- file.txt
+
+# Move branch pointer (soft/mixed/hard)
+git reset --soft HEAD~1     # keep index & wd
+git reset --mixed HEAD~1    # keep wd, unstage
+git reset --hard HEAD~1     # lose changes (danger)
+
+# Revert a commit (new inverse commit)
+git revert &lt;commit-sha&gt;
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Cherry-pick -->
+    <details>
+        <summary>Cherry-pick</summary>
+        <div class="code">
+            <button class="copy" data-target="git-cherry">Copy</button>
+            <pre id="git-cherry"><code># Apply one or more commits onto current branch
+git cherry-pick &lt;sha1&gt; &lt;sha2&gt;
+
+# Continue/abort after conflicts
+git add .
+git cherry-pick --continue
+git cherry-pick --abort
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Tags & Releases -->
+    <details>
+        <summary>Tags & Releases</summary>
+        <div class="code">
+            <button class="copy" data-target="git-tags">Copy</button>
+            <pre id="git-tags"><code># Lightweight / annotated tag
+git tag v1.2.0
+git tag -a v1.2.0 -m "release: 1.2.0"
+
+# Push / delete tags
+git push origin v1.2.0
+git push origin --delete v1.1.0
+git tag -d v1.1.0
+
+# List & show
+git tag --list
+git show v1.2.0
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Diff / Blame / Log tricks -->
+    <details>
+        <summary>Diff, Blame & Log Tricks</summary>
+        <div class="code">
+            <button class="copy" data-target="git-diff-log">Copy</button>
+            <pre id="git-diff-log"><code># What changed
+git diff
+git diff --staged
+
+# Who last touched a line
+git blame -L 10,60 path/file.js
+
+# Pretty log
+git log --graph --decorate --oneline --all
+git log --since="2 weeks ago" --author="you" --stat
+git log -p -- path/file.js
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Bisect -->
+    <details>
+        <summary>Bug Hunt: git bisect</summary>
+        <div class="code">
+            <button class="copy" data-target="git-bisect">Copy</button>
+            <pre id="git-bisect"><code># Find first bad commit via binary search
+git bisect start
+git bisect bad                  # current bad
+git bisect good &lt;good-sha&gt;      # known good
+# run tests/check; mark good/bad at each step:
+git bisect good | bad
+# done:
+git bisect reset
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Submodules & Sparse -->
+    <details>
+        <summary>Submodules &amp; Sparse Checkout</summary>
+        <div class="code">
+            <button class="copy" data-target="git-submodule-sparse">Copy</button>
+            <pre id="git-submodule-sparse"><code># Submodules
+git submodule add https://github.com/org/lib.git libs/lib
+git submodule update --init --recursive
+git submodule foreach git pull origin main
+
+# Sparse checkout (partial repo)
+git clone --filter=blob:none --sparse https://github.com/user/big-repo.git
+cd big-repo
+git sparse-checkout set src/ docs/
+git pull
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Git LFS -->
+    <details>
+        <summary>Large Files (Git LFS)</summary>
+        <div class="code">
+            <button class="copy" data-target="git-lfs">Copy</button>
+            <pre id="git-lfs"><code># Install & init
+git lfs install
+
+# Track patterns
+git lfs track "*.png"
+git add .gitattributes
+git commit -m "chore: track png with LFS"
+
+# Push pulls LFS pointers; ensure LFS is installed on CI
+git push
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Config / SSH / Signing -->
+    <details>
+        <summary>Config, SSH Keys &amp; Commit Signing</summary>
+        <div class="code">
+            <button class="copy" data-target="git-config">Copy</button>
+            <pre id="git-config"><code># Identity (global)
+git config --global user.name  "Your Name"
+git config --global user.email "you@example.com"
+
+# Default branch & rebase pulls
+git config --global init.defaultBranch main
+git config --global pull.rebase true
+
+# SSH key (ed25519) & add to agent
+ssh-keygen -t ed25519 -C "you@example.com"
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+cat ~/.ssh/id_ed25519.pub   # add to GitHub/GitLab
+
+# Sign commits with SSH (modern)
+git config --global gpg.format ssh
+git config --global user.signingkey "~/.ssh/id_ed25519.pub"
+git config --global commit.gpgsign true
+
+# (Alt) GPG signing
+# gpg --full-generate-key  (RSA 4096)
+# git config --global user.signingkey &lt;KEYID&gt;
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Ignore & Clean -->
+    <details>
+        <summary>.gitignore &amp; Cleanup</summary>
+        <div class="code">
+            <button class="copy" data-target="git-ignore-clean">Copy</button>
+            <pre id="git-ignore-clean"><code># Global ignore (for your machine)
+git config --global core.excludesfile ~/.gitignore_global
+
+# Useful patterns
+echo "node_modules/"   &gt;&gt; .gitignore
+echo "dist/"           &gt;&gt; .gitignore
+echo ".env"            &gt;&gt; .gitignore
+
+# Remove untracked files (danger!)
+git clean -fd          # remove dirs
+git clean -fxd         # include ignored
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Hooks -->
+    <details>
+        <summary>Hooks (client-side)</summary>
+        <div class="code">
+            <button class="copy" data-target="git-hooks">Copy</button>
+            <pre id="git-hooks"><code># Example pre-commit hook (lint)
+cat &gt; .git/hooks/pre-commit &lt;&lt;'SH'
+#!/usr/bin/env bash
+npm run -s lint
+SH
+chmod +x .git/hooks/pre-commit
+
+# Husky (JS projects)
+npm i -D husky
+npx husky init
+# then edit .husky/pre-commit to run your checks
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Recovery -->
+    <details>
+        <summary>Recovery (reflog &amp; salvage)</summary>
+        <div class="code">
+            <button class="copy" data-target="git-recovery">Copy</button>
+            <pre id="git-recovery"><code># See where HEAD/branches were
+git reflog
+
+# Recover a lost commit
+git checkout -b rescue &lt;sha-from-reflog&gt;
+
+# Restore a deleted branch (if sha known)
+git branch feature/resurrect &lt;sha&gt;
+
+# Stash recovery
+git fsck --no-reflogs --lost-found
+# inspect .git/lost-found/
+</code></pre>
+        </div>
+    </details>
+
+</div>

@@ -1,0 +1,323 @@
+<h2>CI/CD</h2>
+<p>Two pipelines you’ll actually use: (A) GitHub Actions → ECR → EKS and (B) GitHub Actions → Kubernetes via GHCR/Docker
+    Hub.</p>
+<div class="grid">
+
+    <!-- ==================== PATH A: GHA -> ECR -> EKS ==================== -->
+    <details open>
+        <summary>Path A — GitHub Actions → ECR → EKS</summary>
+        <div class="code">
+            <button class="copy" data-target="cicd-a-notes">Copy</button>
+            <pre id="cicd-a-notes"><code># Overview
+# - Auth to AWS via GitHub OIDC (no long-lived keys).
+# - Build & push Docker image to ECR.
+# - Update Deployment image in EKS using kubectl or Helm.
+#
+# Set GitHub repo → Settings → Secrets and variables → Actions → Variables:
+#   AWS_REGION=ap-south-1
+#   ECR_REPO=app
+#   EKS_CLUSTER=my-cluster
+#   AWS_ROLE_TO_ASSUME=arn:aws:iam::123456789012:role/github-oidc-deploy  # OIDC role
+</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>IAM: OIDC Trust & Inline Policy</summary>
+        <div class="code">
+            <button class="copy" data-target="cicd-a-trust">Copy</button>
+            <pre id="cicd-a-trust"><code># Trust policy (token.actions.githubusercontent.com) — replace account/repo
+cat > trust.json <<'JSON'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com" },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
+      "StringLike":   { "token.actions.githubusercontent.com:sub": "repo:your-org/your-repo:*" }
+    }
+  }]
+}
+JSON
+
+aws iam create-role --role-name github-oidc-deploy \
+  --assume-role-policy-document file://trust.json
+</code></pre>
+        </div>
+        <div class="code">
+            <button class="copy" data-target="cicd-a-policy">Copy</button>
+            <pre id="cicd-a-policy"><code># Permissions: ECR push + EKS describe for kubeconfig
+cat > policy.json <<'JSON'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Effect": "Allow", "Action": [
+        "ecr:GetAuthorizationToken","ecr:BatchCheckLayerAvailability",
+        "ecr:CompleteLayerUpload","ecr:UploadLayerPart","ecr:InitiateLayerUpload",
+        "ecr:PutImage","ecr:BatchGetImage","ecr:DescribeRepositories","ecr:CreateRepository"
+      ], "Resource": "*" },
+    { "Effect": "Allow", "Action": ["eks:DescribeCluster"], "Resource": "*" }
+  ]
+}
+JSON
+
+aws iam put-role-policy --role-name github-oidc-deploy \
+  --policy-name cicd-ecr-eks --policy-document file://policy.json
+</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>GitHub Actions: Build → Push to ECR → Deploy to EKS</summary>
+        <div class="code">
+            <button class="copy" data-target="cicd-a-actions">Copy</button>
+            <pre id="cicd-a-actions"><code># .github/workflows/deploy-ecr-eks.yml
+name: deploy-ecr-eks
+on: { push: { branches: [ "main" ] } }
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    permissions: { id-token: write, contents: read }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region:     ${{ vars.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push
+        env:
+          ECR_REPO:   ${{ vars.ECR_REPO }}
+          ACCOUNT_ID: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE=${ACCOUNT_ID}/${ECR_REPO}
+          TAG=${GITHUB_SHA::7}
+          docker build -t ${ECR_REPO}:${TAG} .
+          docker tag  ${ECR_REPO}:${TAG} ${IMAGE}:${TAG}
+          docker push ${IMAGE}:${TAG}
+          echo "IMAGE_URI=${IMAGE}:${TAG}" >> $GITHUB_ENV
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    permissions: { id-token: write, contents: read }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region:     ${{ vars.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --name ${{ vars.EKS_CLUSTER }} --region ${{ vars.AWS_REGION }}
+          kubectl get nodes
+
+      - name: Deploy (kubectl set image)
+        env: { IMAGE_URI: ${{ env.IMAGE_URI }} }
+        run: |
+          kubectl -n app set image deployment/web web=${IMAGE_URI}
+          kubectl -n app rollout status deploy/web --timeout=120s
+</code></pre>
+        </div>
+        <div class="code">
+            <button class="copy" data-target="cicd-a-helm">Copy</button>
+            <pre id="cicd-a-helm"><code># Helm alternative (existing release "web" and chart "./chart")
+helm upgrade --install web ./chart -n app \
+  --set image.repository=${IMAGE_URI%:*} \
+  --set image.tag=${IMAGE_URI##*:}
+helm -n app rollout status deploy/web --timeout=120s
+</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>K8s Manifests & Rollback</summary>
+        <div class="code">
+            <button class="copy" data-target="cicd-a-manifests">Copy</button>
+            <pre id="cicd-a-manifests"><code># k8s/deployment.yaml (container name "web" must match kubectl set image)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: app
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      containers:
+        - name: web
+          image: 123456789012.dkr.ecr.ap-south-1.amazonaws.com/app:latest
+          ports: [{ containerPort: 80 }]
+
+# Service (optional)
+---
+apiVersion: v1
+kind: Service
+metadata: { name: web, namespace: app }
+spec:
+  selector: { app: web }
+  ports: [{ port: 80, targetPort: 80 }]
+  type: ClusterIP
+
+# Rollback
+kubectl -n app rollout undo deploy/web
+</code></pre>
+        </div>
+    </details>
+
+    <!-- ================== PATH B: GHA -> Kubernetes (GHCR/Docker Hub) ================== -->
+    <details>
+        <summary>Path B — GitHub Actions → Kubernetes (GHCR/Docker Hub)</summary>
+        <div class="code">
+            <button class="copy" data-target="cicd-b-notes">Copy</button>
+            <pre id="cicd-b-notes"><code># Overview
+# - Push image to GHCR (ghcr.io) or Docker Hub using GITHUB_TOKEN or PAT.
+# - Cluster pulls image publicly or via imagePullSecret.
+# - Deploy with kubectl or Helm.
+#
+# Common vars/secrets
+#   REGISTRY=ghcr.io
+#   IMAGE=ghcr.io/${{ github.repository }}
+#   KUBECONFIG_B64 (optional; or fetch kubeconfig via cloud OIDC)
+</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>Cluster Pull Secret (GHCR)</summary>
+        <div class="code">
+            <button class="copy" data-target="cicd-b-secret">Copy</button>
+            <pre id="cicd-b-secret"><code># Namespace + imagePullSecret (PAT with read:packages)
+kubectl create ns app --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n app create secret docker-registry ghcr-pull \
+  --docker-server=ghcr.io \
+  --docker-username=YOUR_GITHUB_USERNAME \
+  --docker-password=YOUR_GH_PAT \
+  --docker-email=you@example.com
+
+# Deployment snippet:
+# spec:
+#   template:
+#     spec:
+#       imagePullSecrets:
+#         - name: ghcr-pull
+</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>GitHub Actions: Build → Push to GHCR → Deploy (kubectl)</summary>
+        <div class="code">
+            <button class="copy" data-target="cicd-b-actions">Copy</button>
+            <pre id="cicd-b-actions"><code># .github/workflows/deploy-ghcr-k8s.yml
+name: deploy-ghcr-k8s
+on: { push: { branches: [ "main" ] } }
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          TAG:   ${{ github.sha }}
+        run: |
+          docker build -t ${IMAGE}:${TAG} -t ${IMAGE}:latest .
+          docker push ${IMAGE}:${TAG}
+          docker push ${IMAGE}:latest
+          echo "IMAGE_URI=${IMAGE}:${TAG}" >> $GITHUB_ENV
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Option A: Use a kubeconfig secret
+      - name: Setup kubeconfig
+        if: secrets.KUBECONFIG_B64 != ''
+        run: |
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      # Option B: Fetch kubeconfig via your cloud's OIDC here.
+
+      - name: Deploy (kubectl set image)
+        env: { IMAGE_URI: ${{ env.IMAGE_URI }} }
+        run: |
+          kubectl -n app set image deployment/web web=${IMAGE_URI}
+          kubectl -n app rollout status deploy/web --timeout=120s
+</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>Helm Values (GHCR/Docker Hub)</summary>
+        <div class="code">
+            <button class="copy" data-target="cicd-b-helm">Copy</button>
+            <pre id="cicd-b-helm"><code># values.yaml
+image:
+  repository: ghcr.io/your-org/your-app
+  tag: latest
+  pullPolicy: IfNotPresent
+  pullSecrets:
+    - name: ghcr-pull
+
+# Deploy with overridden tag/repo
+helm upgrade --install web ./chart -n app \
+  --set image.repository=${IMAGE_URI%:*} \
+  --set image.tag=${IMAGE_URI##*:} \
+  --set image.pullSecrets[0].name=ghcr-pull
+</code></pre>
+        </div>
+    </details>
+
+    <details>
+        <summary>Troubleshooting</summary>
+        <div class="code">
+            <button class="copy" data-target="cicd-troubleshoot">Copy</button>
+            <pre id="cicd-troubleshoot"><code># Image pull failures
+kubectl -n app describe pod &lt;pod&gt; | sed -n '/Events/,$p'
+kubectl -n app get secret ghcr-pull -o yaml
+
+# Rollouts
+kubectl -n app rollout status deploy/web
+kubectl -n app rollout history deploy/web
+kubectl -n app rollout undo deploy/web
+
+# ECR
+aws ecr describe-repositories
+aws ecr describe-image-scan-findings --repository-name app --image-id imageTag=v1
+
+# Kube context
+kubectl config current-context
+kubectl get nodes -o wide
+</code></pre>
+        </div>
+    </details>
+
+</div>

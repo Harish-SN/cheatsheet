@@ -1,0 +1,281 @@
+<h2>Grafana</h2>
+<p>Quick start, Prometheus datasource, provisioning, dashboards, variables, alerting, API, reverse proxy—and optional
+    Loki/Tempo.</p>
+<div class="grid">
+
+    <!-- Quick start -->
+    <details open>
+        <summary>Quick Start (Docker)</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-quickstart">Copy</button>
+            <pre id="grafana-quickstart"><code># Run Grafana OSS (admin / admin)
+docker run -d --name grafana -p 3000:3000 grafana/grafana:latest
+
+# Persist data (recommended)
+docker volume create grafana-data
+docker run -d --name grafana \
+  -p 3000:3000 \
+  -v grafana-data:/var/lib/grafana \
+  grafana/grafana:latest
+
+# With Prometheus alongside (example)
+docker network create mon
+docker run -d --name prometheus --network mon -p 9090:9090 \
+  -v $PWD/prometheus.yml:/etc/prometheus/prometheus.yml \
+  prom/prometheus:latest
+docker run -d --name grafana --network mon -p 3000:3000 grafana/grafana:latest
+# UI: http://localhost:3000 (admin/admin)</code></pre>
+        </div>
+    </details>
+
+    <!-- Datasource: Prometheus -->
+    <details>
+        <summary>Add Prometheus Datasource</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-ds-ui">Copy</button>
+            <pre id="grafana-ds-ui"><code># UI path:
+# Settings (gear) → Data sources → Add data source → Prometheus
+# URL (Docker network): http://prometheus:9090 → Save & test</code></pre>
+        </div>
+
+        <div class="code">
+            <button class="copy" data-target="grafana-ds-provision">Copy</button>
+            <pre id="grafana-ds-provision"><code># file: ./provisioning/datasources/datasource.yml
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+
+# Run with provisioning mounted
+docker run -d --name grafana -p 3000:3000 \
+  -v $PWD/provisioning:/etc/grafana/provisioning \
+  grafana/grafana:latest</code></pre>
+        </div>
+    </details>
+
+    <!-- Dashboards -->
+    <details>
+        <summary>Dashboards (Import & Provision)</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-dash-import">Copy</button>
+            <pre id="grafana-dash-import"><code># Import via UI:
+# Dashboards → New → Import → paste JSON or Grafana.com ID (e.g., 3662 Node Exporter)
+# Pick Prometheus datasource → Import</code></pre>
+        </div>
+
+        <div class="code">
+            <button class="copy" data-target="grafana-dash-provision">Copy</button>
+            <pre id="grafana-dash-provision"><code># file: ./provisioning/dashboards/dashboards.yml
+apiVersion: 1
+providers:
+  - name: default
+    orgId: 1
+    folder: "Provisioned"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+
+# Mount your JSON dashboards folder:
+docker run -d --name grafana -p 3000:3000 \
+  -v $PWD/provisioning:/etc/grafana/provisioning \
+  -v $PWD/dashboards:/var/lib/grafana/dashboards \
+  grafana/grafana:latest</code></pre>
+        </div>
+    </details>
+
+    <!-- Variables -->
+    <details>
+        <summary>Dashboard Variables (PromQL)</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-vars">Copy</button>
+            <pre id="grafana-vars"><code># UI: Dashboard → Settings → Variables → Add variable
+# Variable "job"
+#   Type: Query
+#   Data source: Prometheus
+#   Query: label_values(up, job)
+#   Multi-value: ✓
+
+# Use in panel:
+#   job="$job"
+# Example query:
+#   sum by (instance) (rate(http_requests_total{job=~"$job"}[5m]))</code></pre>
+        </div>
+    </details>
+
+    <!-- Panels quick PromQL -->
+    <details>
+        <summary>Panels (PromQL Cheats)</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-promql">Copy</button>
+            <pre id="grafana-promql"><code># QPS
+sum by (job) (rate(http_requests_total[1m]))
+
+# Error rate (5xx)
+sum(rate(http_requests_total{code=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
+
+# p95 latency (histogram)
+histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
+
+# CPU / Memory (node exporter)
+avg by (instance) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
+
+# K8s container CPU throttling (cAdvisor)
+rate(container_cpu_cfs_throttled_seconds_total[5m])</code></pre>
+        </div>
+    </details>
+
+    <!-- Alerting -->
+    <details>
+        <summary>Alerting (Unified)</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-alerting">Copy</button>
+            <pre id="grafana-alerting"><code># UI flow:
+# Alerting → Contact points (Slack/Webhook/Email)
+# Alerting → Notification policies (routing)
+# Alerting → Alert rules → New alert rule
+
+# Example expr (Prometheus):
+sum(rate(http_requests_total{code=~"5.."}[5m])) > 1
+
+# Provision alert rule (Grafana 9/10)
+# file: ./provisioning/alerting/rules.yml
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: default
+    folder: Alerts
+    interval: 1m
+    rules:
+      - uid: err-rate
+        title: "High 5xx error rate"
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model: { expr: sum(rate(http_requests_total{code=~"5.."}[5m])) }
+          - refId: B
+            datasourceUid: grafana
+            model: { expression: 1 }
+          - refId: C
+            datasourceUid: grafana
+            model: { expression: A &gt; 1 }
+        for: 2m
+        annotations: { summary: "5xx error rate high" }
+        labels: { severity: page }</code></pre>
+        </div>
+    </details>
+
+    <!-- API -->
+    <details>
+        <summary>REST API Cheats</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-api">Copy</button>
+            <pre id="grafana-api"><code># Create API key (UI) → Admin → Service accounts / API keys
+API=http://localhost:3000
+KEY=YOUR_API_KEY
+
+# List datasources
+curl -H "Authorization: Bearer $KEY" $API/api/datasources
+
+# Create folder
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"title":"Prod Dashboards"}' $API/api/folders
+
+# Import dashboard JSON
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d @dashboard.json $API/api/dashboards/db</code></pre>
+        </div>
+    </details>
+
+    <!-- Reverse proxy -->
+    <details>
+        <summary>Nginx Reverse Proxy (TLS)</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-nginx">Copy</button>
+            <pre id="grafana-nginx"><code># /etc/nginx/conf.d/grafana.conf
+server {
+  listen 443 ssl http2;
+  server_name grafana.example.com;
+
+  ssl_certificate     /etc/letsencrypt/live/grafana.example.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/grafana.example.com/privkey.pem;
+
+  location / {
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_pass http://127.0.0.1:3000;
+  }
+}
+
+# Behind proxy:
+GF_SERVER_ROOT_URL=https://grafana.example.com/
+GF_SERVER_SERVE_FROM_SUB_PATH=true</code></pre>
+        </div>
+    </details>
+
+    <!-- Backup / Upgrade -->
+    <details>
+        <summary>Backup / Upgrade</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-backup">Copy</button>
+            <pre id="grafana-backup"><code># Backup persistent data (sqlite by default)
+docker stop grafana
+docker run --rm -v grafana-data:/data -v $PWD:/backup alpine \
+  sh -c 'cd /data && tar czf /backup/grafana-backup.tgz .'
+docker start grafana
+
+# Upgrade
+docker pull grafana/grafana:latest
+docker rm -f grafana
+docker run -d --name grafana -p 3000:3000 -v grafana-data:/var/lib/grafana grafana/grafana:latest</code></pre>
+        </div>
+    </details>
+
+    <!-- Loki -->
+    <details>
+        <summary>Bonus: Loki (Logs)</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-loki">Copy</button>
+            <pre id="grafana-loki"><code># docker-compose.yml (Loki + Promtail + Grafana quick lab)
+version: "3.9"
+services:
+  loki:
+    image: grafana/loki:2.9.0
+    ports: ["3100:3100"]
+    command: -config.file=/etc/loki/local-config.yaml
+  promtail:
+    image: grafana/promtail:2.9.0
+    volumes: ["/var/log:/var/log"]
+    command: -config.file=/etc/promtail/config.yml
+  grafana:
+    image: grafana/grafana:latest
+    ports: ["3000:3000"]
+
+# Grafana → Data sources → Loki → http://loki:3100</code></pre>
+        </div>
+    </details>
+
+    <!-- Tempo -->
+    <details>
+        <summary>Bonus: Tempo (Traces)</summary>
+        <div class="code">
+            <button class="copy" data-target="grafana-tempo">Copy</button>
+            <pre id="grafana-tempo"><code># Minimal Docker run
+docker run -d --name tempo -p 3200:3200 grafana/tempo:latest
+
+# Grafana datasource: Tempo → http://tempo:3200
+# App side: export OTLP traces to Tempo (4317 gRPC or 4318 HTTP) via OpenTelemetry SDK/Collector.</code></pre>
+        </div>
+    </details>
+
+</div>

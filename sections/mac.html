@@ -1,0 +1,182 @@
+<h2>macOS</h2>
+<p>Handy macOS command-line utilities: Homebrew, system info, networking, processes, services, Finder, Spotlight, disk,
+    and updates.</p>
+<div class="grid">
+
+    <!-- Homebrew -->
+    <details open>
+        <summary>Homebrew (Package Manager)</summary>
+        <div class="code">
+            <button class="copy" data-target="mac-brew">Copy</button>
+            <pre id="mac-brew"><code># Install Homebrew
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Update & upgrade
+brew update
+brew upgrade
+
+# Install / remove package
+brew install wget
+brew uninstall wget
+
+# Search package
+brew search node
+
+# List installed packages
+brew list
+
+# Services (start/stop daemons)
+brew services start mysql
+brew services stop mysql
+brew services list
+</code></pre>
+        </div>
+    </details>
+
+    <!-- System Info -->
+    <details>
+        <summary>System Info</summary>
+        <div class="code">
+            <button class="copy" data-target="mac-sys">Copy</button>
+            <pre id="mac-sys"><code># macOS version
+sw_vers
+
+# Hardware info
+system_profiler SPHardwareDataType
+
+# CPU & memory
+sysctl -n machdep.cpu.brand_string
+vm_stat
+
+# Disk usage
+df -h
+diskutil list
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Networking -->
+    <details>
+        <summary>Networking</summary>
+        <div class="code">
+            <button class="copy" data-target="mac-net">Copy</button>
+            <pre id="mac-net"><code># Interfaces & IP addresses
+ifconfig
+ipconfig getifaddr en0
+
+# Ping / Traceroute
+ping -c 4 google.com
+traceroute google.com
+
+# DNS lookup
+dig example.com
+nslookup example.com
+
+# Open a port scan (nc)
+nc -zv 127.0.0.1 22-80
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Processes -->
+    <details>
+        <summary>Processes & Monitoring</summary>
+        <div class="code">
+            <button class="copy" data-target="mac-proc">Copy</button>
+            <pre id="mac-proc"><code># List processes
+ps aux
+top
+
+# Kill process by PID
+kill -9 1234
+
+# Find process using a port
+lsof -i :3000
+
+# Activity Monitor (GUI)
+open -a "Activity Monitor"
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Launch Services -->
+    <details>
+        <summary>Launch Services (launchctl)</summary>
+        <div class="code">
+            <button class="copy" data-target="mac-launchctl">Copy</button>
+            <pre id="mac-launchctl"><code># List all services
+launchctl list
+
+# Load / unload a plist
+launchctl load ~/Library/LaunchAgents/myjob.plist
+launchctl unload ~/Library/LaunchAgents/myjob.plist
+
+# Start / stop service
+launchctl start my.job
+launchctl stop my.job
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Finder & Files -->
+    <details>
+        <summary>Finder & Files</summary>
+        <div class="code">
+            <button class="copy" data-target="mac-files">Copy</button>
+            <pre id="mac-files"><code># Show hidden files in Finder
+defaults write com.apple.finder AppleShowAllFiles -bool true && killall Finder
+
+# Hide again
+defaults write com.apple.finder AppleShowAllFiles -bool false && killall Finder
+
+# Open folder/file in Finder
+open .
+open ~/Downloads
+
+# Quick Look a file
+qlmanage -p file.txt
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Spotlight -->
+    <details>
+        <summary>Spotlight Search</summary>
+        <div class="code">
+            <button class="copy" data-target="mac-spotlight">Copy</button>
+            <pre id="mac-spotlight"><code># Spotlight query
+mdfind "hello world"
+
+# Rebuild Spotlight index
+sudo mdutil -E /
+
+# Enable/disable Spotlight
+sudo mdutil -i on /
+sudo mdutil -i off /
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Disk & Updates -->
+    <details>
+        <summary>Disk & Updates</summary>
+        <div class="code">
+            <button class="copy" data-target="mac-disk">Copy</button>
+            <pre id="mac-disk"><code># Disk usage
+df -h
+du -sh *
+
+# Check disk
+diskutil verifyVolume /
+
+# Repair disk
+diskutil repairVolume /
+
+# macOS software update
+softwareupdate -l       # list
+sudo softwareupdate -i -a   # install all
+</code></pre>
+        </div>
+    </details>
+
+</div>

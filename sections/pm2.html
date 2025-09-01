@@ -1,0 +1,377 @@
+<h2>PM2</h2>
+<p>Process manager for Node apps: start/stop, cluster mode, logs, startup (systemd), deploy, logrotate, and tips.</p>
+<div class="grid">
+
+    <!-- Install & basics -->
+    <details open>
+        <summary>Install & Basics</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-install">Copy</button>
+            <pre id="pm2-install"><code># Install (global)
+npm i -g pm2
+
+# Start a script
+pm2 start app.js --name web
+
+# Env vars
+pm2 start app.js --name web --update-env --env production
+
+# Cluster mode (all CPU cores)
+pm2 start app.js -i max --name web
+
+# List / Inspect / Describe
+pm2 ls
+pm2 describe web
+
+# Stop / Restart / Delete
+pm2 stop web
+pm2 restart web     # zero-downtime for cluster mode
+pm2 delete web
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Logs & Monitoring -->
+    <details>
+        <summary>Logs & Monitoring</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-logs">Copy</button>
+            <pre id="pm2-logs"><code># Live logs (stdout/stderr)
+pm2 logs              # all apps
+pm2 logs web          # specific app
+pm2 flush             # clear all logs
+
+# Resource monitor (top-like)
+pm2 monit
+
+# Tail only last N lines
+pm2 logs web --lines 200
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Persist across reboot -->
+    <details>
+        <summary>Startup (systemd) & Resurrection</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-startup">Copy</button>
+            <pre id="pm2-startup"><code># Generate startup script for your OS (shows a command to run with sudo)
+pm2 startup
+
+# Save current process list so PM2 restarts them on boot
+pm2 save
+
+# Restore saved processes (e.g., after machine reboot)
+pm2 resurrect
+
+# Remove startup
+pm2 unstartup systemd   # or launchd, upstart, etc.
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Ecosystem file -->
+    <details>
+        <summary>Ecosystem File (multi-app config)</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-ecosystem">Copy</button>
+            <pre id="pm2-ecosystem"><code># Create a template
+pm2 init
+
+# ecosystem.config.js (example)
+module.exports = {
+  apps: [
+    {
+      name: "web",
+      script: "app.js",
+      cwd: "/var/www/myapp",
+      exec_mode: "cluster",
+      instances: "max",
+      watch: false,
+      env: {
+        NODE_ENV: "development",
+        PORT: 3000
+      },
+      env_production: {
+        NODE_ENV: "production",
+        PORT: 3000
+      },
+      max_memory_restart: "300M",
+      out_file: "/var/log/pm2/web.out.log",
+      error_file: "/var/log/pm2/web.err.log",
+      merge_logs: true
+    }
+  ]
+};
+
+# Start using ecosystem
+pm2 start ecosystem.config.js --env production
+pm2 restart web --env production
+pm2 save
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Zero-downtime & reloads -->
+    <details>
+        <summary>Zero-Downtime Reloads</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-reload">Copy</button>
+            <pre id="pm2-reload"><code># For cluster mode (instances &gt;= 2), use reload (graceful)
+pm2 reload web
+
+# Rolling restart with delay (ms) between processes
+pm2 reload web --update-env --wait-ready --listen-timeout 8000
+
+# Send READY signal (from app) before reload switch:
+# process.send('ready');
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Health & uptime -->
+    <details>
+        <summary>Health & Uptime Checks</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-health">Copy</button>
+            <pre id="pm2-health"><code># JSON status
+pm2 jlist | jq '.[].pm2_env | {name: name, status: status, uptime: pm_uptime, restarts: restart_time}'
+
+# Simple uptime/readiness endpoint in app + Nginx reverse proxy:
+# location /_health { proxy_pass http://127.0.0.1:3000; }
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Deploy (PM2 deploy) -->
+    <details>
+        <summary>PM2 Deploy (pull from git on server)</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-deploy">Copy</button>
+            <pre id="pm2-deploy"><code># In ecosystem.config.js add a deploy block (example)
+module.exports = {
+  apps: [{ name: "web", script: "app.js" }],
+  deploy: {
+    production: {
+      user: "ubuntu",
+      host: "1.2.3.4",
+      ref: "origin/main",
+      repo: "git@github.com:your/repo.git",
+      path: "/var/www/myapp",
+      "pre-deploy-local": "",
+      "post-deploy": "npm ci && pm2 startOrRestart ecosystem.config.js --env production",
+      env: { NODE_ENV: "production" }
+    }
+  }
+};
+
+# First-time setup on server (creates folders)
+pm2 deploy production setup
+
+# Deploy latest commit
+pm2 deploy production
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Log rotation -->
+    <details>
+        <summary>Log Rotation</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-logrotate">Copy</button>
+            <pre id="pm2-logrotate"><code># Install logrotate module
+pm2 install pm2-logrotate
+
+# Configure
+pm2 set pm2-logrotate:max_size 10M
+pm2 set pm2-logrotate:retain 7
+pm2 set pm2-logrotate:compress true
+pm2 set pm2-logrotate:dateFormat YYYY-MM-DD_HH-mm-ss
+pm2 set pm2-logrotate:workerInterval 30
+pm2 set pm2-logrotate:rotateInterval '0 0 * * *'  # daily
+
+# Show module config
+pm2 conf pm2-logrotate
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Watch & auto-restart -->
+    <details>
+        <summary>Watch & Auto-Restart on Changes</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-watch">Copy</button>
+            <pre id="pm2-watch"><code># Watch mode (dev only; ignore heavy dirs)
+pm2 start app.js --name web --watch --ignore-watch "node_modules logs tmp .git"
+
+# In ecosystem:
+# watch: true,
+# ignore_watch: ["node_modules","logs",".git",".next",".cache"]
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Memory / CPU guards -->
+    <details>
+        <summary>Memory/CPU Guards</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-guards">Copy</button>
+            <pre id="pm2-guards"><code># Restart if memory exceeds 300 MB
+pm2 start app.js --name web --max-memory-restart 300M
+
+# Cron-like restart (every day at 3:00)
+pm2 start app.js --name web --cron-restart "0 3 * * *"
+</code></pre>
+        </div>
+    </details>
+
+    <!-- With Nginx (quick reverse proxy) -->
+    <details>
+        <summary>Nginx Front (quick)</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-nginx">Copy</button>
+            <pre id="pm2-nginx"><code># Nginx site (proxy to PM2 app on :3000)
+server {
+  listen 80;
+  server_name example.com;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 60s;
+  }
+}
+
+# Test & reload
+sudo nginx -t && sudo systemctl reload nginx
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Quick Cheats -->
+    <details>
+        <summary>Quick Cheats</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-cheats">Copy</button>
+            <pre id="pm2-cheats"><code># Zero-downtime reload everything
+pm2 reload all
+
+# Kill all processes and PM2 daemon
+pm2 kill
+
+# Show env for an app
+pm2 env web
+
+# Sort list by memory / CPU
+pm2 ls --sort memory
+pm2 ls --sort cpu
+
+# One-liner: enable boot + save
+pm2 startup && pm2 save
+
+# Clear all logs now
+pm2 flush
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Docker + pm2-runtime -->
+    <details>
+        <summary>Docker + pm2-runtime</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-docker">Copy</button>
+            <pre id="pm2-docker"><code># Dockerfile (Node 18+)
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+RUN npm i -g pm2
+ENV NODE_ENV=production PORT=3000
+
+# Use pm2-runtime for proper PID 1 & signals
+CMD ["pm2-runtime","start","app.js","--name","web","-i","max"]
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:3000/_health || exit 1
+
+# .dockerignore
+node_modules
+.git
+.DS_Store
+npm-debug.log*
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Readiness (READY signal) -->
+    <details>
+        <summary>Readiness (READY signal)</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-ready">Copy</button>
+            <pre id="pm2-ready"><code># In your Node app, signal READY before receiving traffic:
+if (process.send) process.send('ready');
+
+# Then reload with wait-ready so PM2 swaps only after READY:
+pm2 reload web --wait-ready --listen-timeout 8000 --update-env
+</code></pre>
+        </div>
+    </details>
+
+    <!-- TypeScript / Monorepo -->
+    <details>
+        <summary>TypeScript / Monorepo Friendly</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-ts">Copy</button>
+            <pre id="pm2-ts"><code># Run compiled JS (recommended)
+pm2 start dist/server.js --name web
+
+# If you must run TS directly (dev only):
+pm2 start node_modules/.bin/ts-node -- server.ts
+
+# Ecosystem example (monorepo)
+module.exports = {
+  apps: [{
+    name: "web",
+    cwd: "./apps/web",
+    script: "dist/server.js",
+    exec_mode: "cluster",
+    instances: "max",
+    env: { NODE_ENV: "production", PORT: 3000 },
+    max_memory_restart: "350M",
+    out_file: "/var/log/pm2/web.out.log",
+    error_file: "/var/log/pm2/web.err.log",
+    merge_logs: true
+  }]
+};
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Troubleshooting -->
+    <details>
+        <summary>Troubleshooting</summary>
+        <div class="code">
+            <button class="copy" data-target="pm2-troubleshoot">Copy</button>
+            <pre id="pm2-troubleshoot"><code># See why a process crashed
+pm2 logs web
+pm2 describe web
+
+# Check systemd service installed by pm2 startup
+systemctl status pm2-$(whoami)
+
+# If reload hangs, force restart one instance at a time
+pm2 restart web --update-env
+
+# Clean stale processes/logs (careful)
+pm2 kill && pm2 delete all && pm2 flush
+
+# Verify environment variables resolved
+pm2 env web
+</code></pre>
+        </div>
+    </details>
+
+</div>

@@ -1,0 +1,241 @@
+<h2>Prometheus</h2>
+<p>Single-binary quick start, scrape config, recording/alerting rules, exporters, Kubernetes SD, remote_write, queries,
+    and troubleshooting.</p>
+<div class="grid">
+
+    <!-- Quick start -->
+    <details open>
+        <summary>Quick Start (Docker + File Config)</summary>
+        <div class="code">
+            <button class="copy" data-target="prom-quick">Copy</button>
+            <pre id="prom-quick"><code># prometheus.yml (basic)
+cat > prometheus.yml <<'YAML'
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+YAML
+
+# Run
+docker run -d --name prometheus -p 9090:9090 \
+  -v $PWD/prometheus.yml:/etc/prometheus/prometheus.yml \
+  prom/prometheus:latest
+
+# UI: http://localhost:9090</code></pre>
+        </div>
+    </details>
+
+    <!-- Scrape configs -->
+    <details>
+        <summary>Scrape Configs (Static & File SD)</summary>
+        <div class="code">
+            <button class="copy" data-target="prom-scrape">Copy</button>
+            <pre id="prom-scrape"><code># Static targets + relabel examples
+scrape_configs:
+  - job_name: app
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets: ["app1:8080","app2:8080"]
+        labels: { env: "prod" }
+
+# File-based service discovery
+# targets.json (watched by Prometheus)
+# [ {"labels": {"job":"app","env":"prod"}, "targets": ["app3:8080"]} ]
+scrape_configs:
+  - job_name: file-sd
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets.json"]</code></pre>
+        </div>
+    </details>
+
+    <!-- Recording & alerting rules -->
+    <details>
+        <summary>Recording & Alerting Rules</summary>
+        <div class="code">
+            <button class="copy" data-target="prom-rules">Copy</button>
+            <pre id="prom-rules"><code># rules.yml
+groups:
+  - name: recording
+    rules:
+      - record: job:http_requests_per_second:rate1m
+        expr: sum by (job) (rate(http_requests_total[1m]))
+
+  - name: alerts
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(http_requests_total{code=~"5.."}[5m])) > 1
+        for: 2m
+        labels: { severity: "page" }
+        annotations:
+          summary: "5xx error rate high"
+          description: "5xx > 1 rps (5m) on {{ $labels.job }}"
+
+# prometheus.yml (include rules)
+rule_files:
+  - /etc/prometheus/rules.yml</code></pre>
+        </div>
+    </details>
+
+    <!-- Alertmanager -->
+    <details>
+        <summary>Alertmanager (Slack/Webhook)</summary>
+        <div class="code">
+            <button class="copy" data-target="prom-am">Copy</button>
+            <pre id="prom-am"><code># alertmanager.yml (Slack example)
+global:
+  resolve_timeout: 5m
+route:
+  receiver: slack
+receivers:
+  - name: slack
+    slack_configs:
+      - api_url: https://hooks.slack.com/services/TOKEN/ID/SECRET
+        channel: '#alerts'
+        send_resolved: true
+
+# Run Alertmanager
+docker run -d --name alertmanager -p 9093:9093 \
+  -v $PWD/alertmanager.yml:/etc/alertmanager/alertmanager.yml \
+  prom/alertmanager:latest
+
+# Point Prometheus to Alertmanager
+# prometheus.yml
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]</code></pre>
+        </div>
+    </details>
+
+    <!-- Exporters -->
+    <details>
+        <summary>Exporters (Node, cAdvisor, Nginx)</summary>
+        <div class="code">
+            <button class="copy" data-target="prom-exporters">Copy</button>
+            <pre id="prom-exporters"><code># Node Exporter (host metrics)
+docker run -d --name nodeexp -p 9100:9100 --pid=host --net=host \
+  quay.io/prometheus/node-exporter:latest
+
+# cAdvisor (container metrics)
+docker run -d --name cadvisor -p 8080:8080 \
+  -v /:/rootfs:ro -v /var/run:/var/run:ro \
+  -v /sys:/sys:ro -v /var/lib/docker/:/var/lib/docker:ro \
+  gcr.io/cadvisor/cadvisor:latest
+
+# Nginx exporter
+docker run -d --name nginx-exp -p 9113:9113 \
+  nginx/nginx-prometheus-exporter:latest -nginx.scrape-uri http://nginx/status
+
+# prometheus.yml additions
+scrape_configs:
+  - job_name: node
+    static_configs: [{ targets: ["localhost:9100"] }]
+  - job_name: cadvisor
+    static_configs: [{ targets: ["localhost:8080"] }]
+  - job_name: nginx
+    static_configs: [{ targets: ["localhost:9113"] }]</code></pre>
+        </div>
+    </details>
+
+    <!-- Kubernetes discovery -->
+    <details>
+        <summary>Kubernetes Service Discovery (EKS/GKE/AKS)</summary>
+        <div class="code">
+            <button class="copy" data-target="prom-k8s">Copy</button>
+            <pre id="prom-k8s"><code># prometheus.yml (inside cluster)
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # Node (kubelet / cadvisor)
+  - job_name: kubernetes-nodes
+    kubernetes_sd_configs: [{ role: node }]
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+
+  # Pods with prometheus.io/scrape="true"
+  - job_name: kubernetes-pods
+    kubernetes_sd_configs: [{ role: pod }]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target: __metrics_path__
+        regex: (.+)
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target: __address__
+        regex: (.+)
+        replacement: $1
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)</code></pre>
+        </div>
+    </details>
+
+    <!-- Remote write -->
+    <details>
+        <summary>Remote Write (Grafana Cloud / Thanos / Victoria)</summary>
+        <div class="code">
+            <button class="copy" data-target="prom-remote">Copy</button>
+            <pre id="prom-remote"><code># prometheus.yml
+remote_write:
+  - url: https://prometheus-blocks.example/api/v1/write
+    basic_auth:
+      username: YOUR_ID
+      password: YOUR_SECRET
+    write_relabel_configs:
+      - source_labels: [job]
+        regex: "cadvisor"
+        action: keep   # keep only these jobs (example)</code></pre>
+        </div>
+    </details>
+
+    <!-- Queries -->
+    <details>
+        <summary>Common Queries (PromQL)</summary>
+        <div class="code">
+            <button class="copy" data-target="prom-queries">Copy</button>
+            <pre id="prom-queries"><code># Uptime of targets
+up
+
+# CPU (node exporter)
+avg by (instance) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+
+# Memory utilization
+1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+
+# HTTP QPS
+sum by (job) (rate(http_requests_total[1m]))
+
+# p95 latency
+histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))</code></pre>
+        </div>
+    </details>
+
+    <!-- Troubleshooting -->
+    <details>
+        <summary>Troubleshooting</summary>
+        <div class="code">
+            <button class="copy" data-target="prom-trouble">Copy</button>
+            <pre id="prom-trouble"><code># Check config
+promtool check config /etc/prometheus/prometheus.yml
+
+# Validate rules
+promtool check rules /etc/prometheus/rules.yml
+
+# Targets & Service Discovery (UI)
+# http://localhost:9090/targets
+# http://localhost:9090/service-discovery
+
+# Label/series cardinality (look for explosions)
+topk(20, count by (__name__) ({__name__=~".+"}))</code></pre>
+        </div>
+    </details>
+
+</div>

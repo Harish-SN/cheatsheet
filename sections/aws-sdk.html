@@ -1,0 +1,244 @@
+<h2>AWS SDK</h2>
+<p>Minimal Node.js (AWS SDK v3) and Python (boto3) snippets for EC2, S3, DynamoDB, Lambda, AppSync, ECR, and EKS.</p>
+<div class="grid">
+
+    <!-- ============ Node.js v3 ============ -->
+    <details open>
+        <summary>Node.js (AWS SDK v3)</summary>
+        <div class="code">
+            <button class="copy" data-target="sdk-node-setup">Copy</button>
+            <pre id="sdk-node-setup"><code># npm i @aws-sdk/client-ec2 @aws-sdk/client-s3 @aws-sdk/client-dynamodb \
+#       @aws-sdk/lib-dynamodb @aws-sdk/client-lambda @aws-sdk/client-appsync \
+#       @aws-sdk/client-ecr @aws-sdk/client-eks node-fetch
+# Region is read from AWS_REGION or pass { region } to each client.</code></pre>
+        </div>
+
+        <!-- S3 -->
+        <div class="code">
+            <button class="copy" data-target="sdk-node-s3">Copy</button>
+            <pre id="sdk-node-s3"><code>import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+const s3 = new S3Client({ region: "ap-south-1" });
+
+export async function s3Put() {
+  await s3.send(new PutObjectCommand({
+    Bucket: "my-bucket", Key: "hello.txt", Body: "hi", ContentType: "text/plain"
+  }));
+}
+
+export async function s3Get() {
+  const out = await s3.send(new GetObjectCommand({ Bucket: "my-bucket", Key: "hello.txt" }));
+  console.log(await out.Body?.transformToString());
+}</code></pre>
+        </div>
+
+        <!-- DynamoDB -->
+        <div class="code">
+            <button class="copy" data-target="sdk-node-ddb">Copy</button>
+            <pre id="sdk-node-ddb"><code>import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: "ap-south-1" }));
+
+export const ddbPut = () => ddb.send(new PutCommand({ TableName: "Users", Item: { id: "u#1", name: "Alice" }}));
+export const ddbGet = async () => console.log((await ddb.send(new GetCommand({ TableName: "Users", Key: { id: "u#1" }}))).Item);
+export const ddbQuery = async () => console.log((await ddb.send(new QueryCommand({
+  TableName: "Orders",
+  KeyConditionExpression: "userId = :u",
+  ExpressionAttributeValues: { ":u": "u#1" }
+}))).Items);</code></pre>
+        </div>
+
+        <!-- EC2 -->
+        <div class="code">
+            <button class="copy" data-target="sdk-node-ec2">Copy</button>
+            <pre id="sdk-node-ec2"><code>import { EC2Client, DescribeInstancesCommand } from "@aws-sdk/client-ec2";
+const ec2 = new EC2Client({ region: "ap-south-1" });
+
+export async function listInstances() {
+  const out = await ec2.send(new DescribeInstancesCommand({}));
+  const rows = out.Reservations?.flatMap(r => r.Instances ?? []) ?? [];
+  console.table(rows.map(i => ({ id: i.InstanceId, type: i.InstanceType, state: i.State?.Name, ip: i.PublicIpAddress })));
+}</code></pre>
+        </div>
+
+        <!-- Lambda -->
+        <div class="code">
+            <button class="copy" data-target="sdk-node-lambda">Copy</button>
+            <pre id="sdk-node-lambda"><code>import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+const lambda = new LambdaClient({ region: "ap-south-1" });
+
+export async function invokeLambda() {
+  const out = await lambda.send(new InvokeCommand({
+    FunctionName: "my-func",
+    Payload: Buffer.from(JSON.stringify({ ping: 1 }))
+  }));
+  console.log(JSON.parse(Buffer.from(out.Payload ?? []).toString() || "{}"));
+}</code></pre>
+        </div>
+
+        <!-- AppSync -->
+        <div class="code">
+            <button class="copy" data-target="sdk-node-appsync">Copy</button>
+            <pre id="sdk-node-appsync"><code>import fetch from "node-fetch";
+/** GraphQL call with API key (demo). Set APPSYNC_URL & APPSYNC_API_KEY envs. */
+export async function gql(query, variables={}) {
+  const r = await fetch(process.env.APPSYNC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": process.env.APPSYNC_API_KEY },
+    body: JSON.stringify({ query, variables })
+  });
+  const j = await r.json();
+  if (j.errors) throw new Error(JSON.stringify(j.errors));
+  return j.data;
+}</code></pre>
+        </div>
+
+        <!-- ECR -->
+        <div class="code">
+            <button class="copy" data-target="sdk-node-ecr">Copy</button>
+            <pre id="sdk-node-ecr"><code>import { ECRClient, DescribeRepositoriesCommand, GetAuthorizationTokenCommand } from "@aws-sdk/client-ecr";
+const ecr = new ECRClient({ region: "ap-south-1" });
+
+export async function listRepos() {
+  const out = await ecr.send(new DescribeRepositoriesCommand({}));
+  console.table(out.repositories?.map(r => ({ name: r.repositoryName, uri: r.repositoryUri })));
+}
+
+/** Get Docker login password (useful for CI if not using aws ecr get-login-password).
+ * echo PASSWORD | docker login --username AWS --password-stdin ACCOUNT.dkr.ecr.ap-south-1.amazonaws.com
+ */
+export async function ecrPassword() {
+  const out = await ecr.send(new GetAuthorizationTokenCommand({}));
+  const auth = out.authorizationData?.[0];
+  const token = Buffer.from(auth?.authorizationToken || "", "base64").toString(); // "AWS:<pwd>"
+  const password = token.split(":")[1] || "";
+  console.log(password);
+}</code></pre>
+        </div>
+
+        <!-- EKS -->
+        <div class="code">
+            <button class="copy" data-target="sdk-node-eks">Copy</button>
+            <pre id="sdk-node-eks"><code>import { EKSClient, DescribeClusterCommand } from "@aws-sdk/client-eks";
+const eks = new EKSClient({ region: "ap-south-1" });
+
+export async function eksStatus() {
+  const out = await eks.send(new DescribeClusterCommand({ name: "demo-cluster" }));
+  console.log(out.cluster?.status, out.cluster?.endpoint);
+}</code></pre>
+        </div>
+    </details>
+
+    <!-- ============ Python (boto3) ============ -->
+    <details>
+        <summary>Python (boto3)</summary>
+        <div class="code">
+            <button class="copy" data-target="sdk-py-setup">Copy</button>
+            <pre id="sdk-py-setup"><code># pip install boto3</code></pre>
+        </div>
+
+        <!-- S3 -->
+        <div class="code">
+            <button class="copy" data-target="sdk-py-s3">Copy</button>
+            <pre id="sdk-py-s3"><code>import boto3
+s3 = boto3.client("s3", region_name="ap-south-1")
+
+def put():
+    s3.put_object(Bucket="my-bucket", Key="hello.txt", Body=b"hi", ContentType="text/plain")
+
+def get():
+    obj = s3.get_object(Bucket="my-bucket", Key="hello.txt")
+    print(obj["Body"].read().decode())</code></pre>
+        </div>
+
+        <!-- DynamoDB -->
+        <div class="code">
+            <button class="copy" data-target="sdk-py-ddb">Copy</button>
+            <pre id="sdk-py-ddb"><code>import boto3
+from boto3.dynamodb.conditions import Key
+ddb = boto3.resource("dynamodb", region_name="ap-south-1")
+tbl = ddb.Table("Users")
+
+def put():
+    tbl.put_item(Item={"id":"u#1","name":"Alice"})
+
+def get():
+    print(tbl.get_item(Key={"id":"u#1"}).get("Item"))
+
+def query():
+    # For table with PK=userId & SK
+    out = tbl.query(KeyConditionExpression=Key("userId").eq("u#1"))
+    print(out.get("Items", []))</code></pre>
+        </div>
+
+        <!-- EC2 -->
+        <div class="code">
+            <button class="copy" data-target="sdk-py-ec2">Copy</button>
+            <pre id="sdk-py-ec2"><code>import boto3
+ec2 = boto3.client("ec2", region_name="ap-south-1")
+
+def list_instances():
+    out = ec2.describe_instances()
+    rows = [i for r in out.get("Reservations", []) for i in r.get("Instances", [])]
+    for i in rows:
+        print(i["InstanceId"], i["InstanceType"], i["State"]["Name"], i.get("PublicIpAddress"))</code></pre>
+        </div>
+
+        <!-- Lambda -->
+        <div class="code">
+            <button class="copy" data-target="sdk-py-lambda">Copy</button>
+            <pre id="sdk-py-lambda"><code>import boto3, json
+lam = boto3.client("lambda", region_name="ap-south-1")
+
+def invoke():
+    out = lam.invoke(FunctionName="my-func", Payload=json.dumps({"ping":1}).encode())
+    print(json.loads(out["Payload"].read().decode()))</code></pre>
+        </div>
+
+        <!-- AppSync -->
+        <div class="code">
+            <button class="copy" data-target="sdk-py-appsync">Copy</button>
+            <pre id="sdk-py-appsync"><code>import os, json, urllib.request
+
+def gql(query, variables=None):
+    data = json.dumps({"query": query, "variables": variables or {}}).encode()
+    req = urllib.request.Request(os.environ["APPSYNC_URL"], data=data, headers={
+        "Content-Type": "application/json",
+        "x-api-key": os.environ["APPSYNC_API_KEY"]
+    })
+    with urllib.request.urlopen(req) as r:
+        out = json.loads(r.read().decode())
+        if "errors" in out: raise RuntimeError(out["errors"])
+        return out["data"]</code></pre>
+        </div>
+
+        <!-- ECR -->
+        <div class="code">
+            <button class="copy" data-target="sdk-py-ecr">Copy</button>
+            <pre id="sdk-py-ecr"><code>import boto3, base64
+ecr = boto3.client("ecr", region_name="ap-south-1")
+
+def list_repos():
+    out = ecr.describe_repositories()
+    for r in out.get("repositories", []):
+        print(r["repositoryName"], r["repositoryUri"])
+
+def docker_password():
+    # Equivalent to `aws ecr get-login-password`
+    out = ecr.get_authorization_token()
+    token = out["authorizationData"][0]["authorizationToken"]  # base64 "AWS:<pwd>"
+    print(base64.b64decode(token).decode().split(":")[1])</code></pre>
+        </div>
+
+        <!-- EKS -->
+        <div class="code">
+            <button class="copy" data-target="sdk-py-eks">Copy</button>
+            <pre id="sdk-py-eks"><code>import boto3
+eks = boto3.client("eks", region_name="ap-south-1")
+
+def status():
+    out = eks.describe_cluster(name="demo-cluster")
+    print(out["cluster"]["status"], out["cluster"]["endpoint"])</code></pre>
+        </div>
+    </details>
+
+</div>

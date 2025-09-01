@@ -1,0 +1,265 @@
+<h2>Linux / Shell</h2>
+<p>Common Linux administration commands: files, users, permissions, services, logs, networking, processes, monitoring,
+    cron jobs, and firewall.</p>
+<div class="grid">
+
+    <!-- File ops -->
+    <details open>
+        <summary>Files & Directories</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-files">Copy</button>
+            <pre id="linux-files"><code># List files
+ls -lh
+ls -lah /etc
+
+# Change directory
+cd /var/www
+
+# Copy / Move
+cp file1 file2
+mv old new
+
+# Remove (careful!)
+rm file.txt
+rm -rf dir/
+
+# Disk usage
+du -sh *
+df -h
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Users & permissions -->
+    <details>
+        <summary>Users & Permissions</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-users">Copy</button>
+            <pre id="linux-users"><code># Current user / who is logged in
+whoami
+w
+id
+
+# Add user & set password
+sudo adduser dev
+sudo passwd dev
+
+# Add to group (wheel = sudoers)
+sudo usermod -aG wheel dev
+
+# Permissions
+chmod 644 file
+chmod +x script.sh
+chown user:group file
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Services / systemctl -->
+    <details>
+        <summary>Systemd Services</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-systemctl">Copy</button>
+            <pre id="linux-systemctl"><code># Start / Stop / Restart
+sudo systemctl start nginx
+sudo systemctl stop nginx
+sudo systemctl restart nginx
+
+# Enable on boot
+sudo systemctl enable nginx
+sudo systemctl disable nginx
+
+# Status & logs
+systemctl status nginx
+journalctl -u nginx --since "1h"
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Networking -->
+    <details>
+        <summary>Networking</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-net">Copy</button>
+            <pre id="linux-net"><code># IP & routes
+ip addr
+ip route
+
+# DNS lookup & ping
+dig example.com
+ping -c 4 8.8.8.8
+
+# Ports listening
+ss -tulnp
+netstat -tulnp   # if installed
+
+# Curl & wget
+curl -I https://example.com
+wget https://example.com/file
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Logs -->
+    <details>
+        <summary>Logs</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-logs">Copy</button>
+            <pre id="linux-logs"><code># Tail logs
+tail -f /var/log/messages
+tail -n 100 /var/log/nginx/error.log
+
+# Filter logs
+grep ERROR /var/log/nginx/error.log
+
+# Less pager
+less /var/log/secure
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Processes -->
+    <details>
+        <summary>Processes</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-proc">Copy</button>
+            <pre id="linux-proc"><code># List processes
+ps aux
+top
+
+# Kill by PID or name
+kill -9 1234
+pkill -f node
+
+# Find process using a port
+sudo lsof -i :3000
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Compression -->
+    <details>
+        <summary>Compression & Archives</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-compress">Copy</button>
+            <pre id="linux-compress"><code># Tar archive & extract
+tar -czvf site.tar.gz /var/www
+tar -xzvf site.tar.gz -C /tmp
+
+# Zip / unzip
+zip -r site.zip /var/www
+unzip site.zip -d /tmp
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Find & Grep -->
+    <details>
+        <summary>Find & Grep</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-find">Copy</button>
+            <pre id="linux-find"><code># Find files by name
+find /etc -name "*.conf"
+
+# Find by size & modified time
+find /var/log -size +100M
+find . -mtime -1
+
+# Grep inside files
+grep -R "pattern" /var/www
+</code></pre>
+        </div>
+    </details>
+
+    <!-- DNF / Yum -->
+    <details>
+        <summary>Package Management (Amazon Linux)</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-dnf">Copy</button>
+            <pre id="linux-dnf"><code># Search / install / update
+dnf search nginx
+sudo dnf install -y nginx
+
+# Update all packages
+sudo dnf update -y
+
+# Remove package
+sudo dnf remove nginx
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Monitoring -->
+    <details>
+        <summary>Monitoring & Resource Usage</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-monitor">Copy</button>
+            <pre id="linux-monitor"><code># CPU / mem
+top
+htop          # if installed
+
+# Disk usage
+df -h
+du -sh *
+
+# I/O
+iostat -xz 1   # from sysstat package
+
+# Uptime & load
+uptime
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Cron jobs -->
+    <details>
+        <summary>Cron Jobs (Scheduling)</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-cron">Copy</button>
+            <pre id="linux-cron"><code># Edit crontab for current user
+crontab -e
+
+# Format: minute hour day month weekday command
+# Example: run backup.sh every day at 2:30am
+30 2 * * * /home/ubuntu/backup.sh
+
+# List current cron jobs
+crontab -l
+
+# Run script every 5 minutes
+*/5 * * * * /home/ubuntu/script.sh
+
+# System-wide cron dirs
+/etc/cron.d/
+/etc/cron.daily/
+/etc/cron.weekly/
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Firewall -->
+    <details>
+        <summary>Firewall (UFW & iptables)</summary>
+        <div class="code">
+            <button class="copy" data-target="linux-firewall">Copy</button>
+            <pre id="linux-firewall"><code># UFW (simple firewall, Ubuntu/Debian)
+/usr/sbin/ufw status
+sudo ufw allow 22/tcp
+sudo ufw allow 80,443/tcp
+sudo ufw deny 3306/tcp
+sudo ufw enable
+
+# Iptables (more advanced)
+/sbin/iptables -L -n -v
+sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -P INPUT DROP   # default deny
+
+# Save rules (Amazon Linux)
+/sbin/service iptables save
+</code></pre>
+        </div>
+    </details>
+
+</div>

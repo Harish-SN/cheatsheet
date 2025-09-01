@@ -1,0 +1,302 @@
+<h2>Windows</h2>
+<p>PowerShell/CMD essentials: packages, system info, networking, processes, services, firewall, disks, updates, WSL,
+    tasks, files, logs, and users.</p>
+<div class="grid">
+
+    <!-- Package management -->
+    <details open>
+        <summary>Packages (winget / Chocolatey)</summary>
+        <div class="code">
+            <button class="copy" data-target="win-pkg">Copy</button>
+            <pre id="win-pkg"><code># ---- winget (Windows 10/11) ----
+winget search git
+winget install --id Git.Git -e
+winget list
+winget upgrade --all
+winget uninstall --id Git.Git -e
+
+# Export / import package list
+winget export -o packages.json
+winget import -i packages.json
+
+# ---- Chocolatey (alt) ----
+# PowerShell as Admin:
+Set-ExecutionPolicy Bypass -Scope Process -Force; `
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
+iwr https://community.chocolatey.org/install.ps1 -UseBasicParsing | iex
+
+choco install -y nodejs-lts
+choco upgrade -y all
+choco uninstall -y nodejs-lts
+</code></pre>
+        </div>
+    </details>
+
+    <!-- System info -->
+    <details>
+        <summary>System Info</summary>
+        <div class="code">
+            <button class="copy" data-target="win-sys">Copy</button>
+            <pre id="win-sys"><code># OS & build
+systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
+
+# PowerShell objects
+Get-ComputerInfo | Select-Object OsName,OsVersion,OsBuildNumber,WindowsProductName | Format-List
+
+# CPU / Memory
+Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors
+Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory
+
+# Environment variables
+gci env:* | sort name
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Networking -->
+    <details>
+        <summary>Networking</summary>
+        <div class="code">
+            <button class="copy" data-target="win-net">Copy</button>
+            <pre id="win-net"><code># IP info
+ipconfig /all
+
+# Routes
+route print
+
+# DNS lookup / ping / traceroute
+nslookup example.com
+ping -n 4 8.8.8.8
+tracert example.com
+
+# Listening ports / which process
+netstat -abno        # needs admin
+# or PowerShell:
+Get-NetTCPConnection | Where-Object {$_.State -eq "Listen"} | Select-Object LocalAddress,LocalPort,OwningProcess
+
+# Quick HTTP test
+curl.exe -I https://example.com
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Processes & Services -->
+    <details>
+        <summary>Processes & Services</summary>
+        <div class="code">
+            <button class="copy" data-target="win-proc-svc">Copy</button>
+            <pre id="win-proc-svc"><code># Processes
+Get-Process | Sort-Object CPU -desc | Select-Object -First 20
+Stop-Process -Name "node" -Force
+Get-Process -Id (Get-NetTCPConnection -LocalPort 3000).OwningProcess
+
+# Services
+Get-Service | Sort-Object Status,Name
+Get-Service -Name "nginx"
+Start-Service "nginx"
+Restart-Service "nginx"
+Stop-Service "nginx"
+Set-Service "nginx" -StartupType Automatic
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Firewall -->
+    <details>
+        <summary>Firewall (Windows Defender Firewall)</summary>
+        <div class="code">
+            <button class="copy" data-target="win-firewall">Copy</button>
+            <pre id="win-firewall"><code># Show profiles
+Get-NetFirewallProfile | Select-Object Name,Enabled,DefaultInboundAction,DefaultOutboundAction
+
+# Allow inbound TCP 80
+New-NetFirewallRule -DisplayName "Allow HTTP 80" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80
+
+# Delete rule
+Get-NetFirewallRule -DisplayName "Allow HTTP 80" | Remove-NetFirewallRule
+
+# Enable/Disable firewall per profile
+Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Disks & Filesystems -->
+    <details>
+        <summary>Disks & Filesystems</summary>
+        <div class="code">
+            <button class="copy" data-target="win-disk">Copy</button>
+            <pre id="win-disk"><code># List disks/volumes
+Get-Disk
+Get-Volume | Select-Object DriveLetter,FileSystem,Size,SizeRemaining | Sort-Object DriveLetter
+
+# Resize volume (if free space in partition)
+Get-Partition -DriveLetter D | Resize-Partition -Size 200GB
+
+# Check disk
+chkdsk C: /scan
+# Schedule repair on reboot
+chkdsk C: /F /R
+
+# Disk cleanup (temp files)
+cleanmgr /sageset:1 &amp; cleanmgr /sagerun:1
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Windows Update -->
+    <details>
+        <summary>Windows Update (CLI)</summary>
+        <div class="code">
+            <button class="copy" data-target="win-update">Copy</button>
+            <pre id="win-update"><code># Built-in: trigger scan/install via usoclient (varies by version)
+usoclient StartScan
+usoclient StartDownload
+usoclient StartInstall
+usoclient RestartDevice
+
+# PowerShell module (recommended): PSWindowsUpdate
+# Run PowerShell as Admin:
+Install-Module PSWindowsUpdate -Force
+Get-WindowsUpdate
+Install-WindowsUpdate -AcceptAll -AutoReboot
+</code></pre>
+        </div>
+    </details>
+
+    <!-- WSL -->
+    <details>
+        <summary>WSL (Windows Subsystem for Linux)</summary>
+        <div class="code">
+            <button class="copy" data-target="win-wsl">Copy</button>
+            <pre id="win-wsl"><code># Enable WSL & default distro (Windows 10/11)
+wsl --install            # installs default Ubuntu (requires reboot)
+wsl --list --online      # list available distros
+wsl --install -d Ubuntu
+
+# List / set default / shutdown
+wsl --list --verbose
+wsl --set-default Ubuntu
+wsl --shutdown
+
+# Run a command in WSL
+wsl -d Ubuntu -- bash -lc "uname -a &amp;&amp; lsb_release -a"
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Scheduled Tasks -->
+    <details>
+        <summary>Scheduled Tasks</summary>
+        <div class="code">
+            <button class="copy" data-target="win-schtasks">Copy</button>
+            <pre id="win-schtasks"><code># List tasks
+schtasks /Query /FO TABLE /V
+
+# Create a daily task at 02:30
+schtasks /Create /SC DAILY /TN "NightlyBackup" /TR "C:\scripts\backup.bat" /ST 02:30
+
+# Run now / delete
+schtasks /Run /TN "NightlyBackup"
+schtasks /Delete /TN "NightlyBackup" /F
+</code></pre>
+        </div>
+    </details>
+
+    <!-- File ops -->
+    <details>
+        <summary>Files & Directories</summary>
+        <div class="code">
+            <button class="copy" data-target="win-files">Copy</button>
+            <pre id="win-files"><code># List / recurse / filter
+Get-ChildItem C:\ -Recurse -Filter *.log -ErrorAction SilentlyContinue
+
+# Copy / Move / Remove
+Copy-Item C:\src\file.txt C:\dst\
+Move-Item C:\src\old.txt C:\dst\new.txt
+Remove-Item C:\tmp\*.tmp -Recurse -Force
+
+# Disk usage by folder (top 10)
+gci C:\ -Recurse -ErrorAction SilentlyContinue |
+  ? { -not $_.PsIsContainer } |
+  Group-Object DirectoryName -NoElement |
+  Sort-Object Count -desc | Select-Object -First 10
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Compression -->
+    <details>
+        <summary>Compression & Archives</summary>
+        <div class="code">
+            <button class="copy" data-target="win-zip">Copy</button>
+            <pre id="win-zip"><code># Compress folder to zip
+Compress-Archive -Path C:\project -DestinationPath C:\backup\project.zip
+
+# Extract zip
+Expand-Archive C:\backup\project.zip -DestinationPath C:\restore -Force
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Logs / Event Viewer -->
+    <details>
+        <summary>Logs & Event Viewer</summary>
+        <div class="code">
+            <button class="copy" data-target="win-logs">Copy</button>
+            <pre id="win-logs"><code># View system/application logs
+Get-EventLog -LogName System -Newest 50
+Get-EventLog -LogName Application -Newest 50
+
+# Newer API:
+Get-WinEvent -LogName Microsoft-Windows-WindowsUpdateClient/Operational -MaxEvents 20
+
+# Open Event Viewer GUI
+eventvwr.msc
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Users / Groups / Permissions -->
+    <details>
+        <summary>Users, Groups & Permissions</summary>
+        <div class="code">
+            <button class="copy" data-target="win-users">Copy</button>
+            <pre id="win-users"><code># Local users & groups
+Get-LocalUser
+Get-LocalGroup
+Get-LocalGroupMember -Group "Administrators"
+
+# Create user & set password
+$pw = Read-Host -AsSecureString
+New-LocalUser -Name "dev" -Password $pw -FullName "Dev User" -PasswordNeverExpires:$true
+Add-LocalGroupMember -Group "Administrators" -Member "dev"
+
+# NTFS permissions (icacls)
+icacls "C:\data" /grant dev:(OI)(CI)M   # Modify on folder & children
+icacls "C:\data" /inheritance:r         # Disable inheritance
+</code></pre>
+        </div>
+    </details>
+
+    <!-- RDP & Quick Admin Tips -->
+    <details>
+        <summary>RDP & Admin Tips</summary>
+        <div class="code">
+            <button class="copy" data-target="win-rdp">Copy</button>
+            <pre id="win-rdp"><code># Enable Remote Desktop (PowerShell as Admin)
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+# Add user to Remote Desktop Users group
+Add-LocalGroupMember -Group "Remote Desktop Users" -Member "dev"
+
+# Quick: open Settings pages
+start ms-settings:windowsupdate
+start ms-settings:appsfeatures
+start ms-settings:about
+</code></pre>
+        </div>
+    </details>
+
+</div>

@@ -1,0 +1,256 @@
+<h2>Docker</h2>
+<p>Builds, tags, multi-stage, compose, registries (Hub/GHCR/ECR), volumes, networking, cleanup, and troubleshooting.</p>
+<div class="grid">
+
+    <!-- Basics -->
+    <details open>
+        <summary>Basics</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-basic">Copy</button>
+            <pre id="docker-basic"><code># Version / info
+docker --version
+docker info
+
+# Run a container (detached, port map, name)
+docker run -d -p 8080:80 --name web nginx:alpine
+
+# List / stop / remove containers
+docker ps                  # running
+docker ps -a               # all
+docker stop web && docker rm web
+
+# Exec into a running container
+docker exec -it web sh     # or bash
+
+# Logs
+docker logs -f web
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Build & Images -->
+    <details>
+        <summary>Build & Images</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-build">Copy</button>
+            <pre id="docker-build"><code># Build from Dockerfile in current dir
+docker build -t myapp:latest .
+
+# Tag & push to Docker Hub
+docker tag myapp:latest youruser/myapp:1.0
+docker push youruser/myapp:1.0
+
+# Save / load image tar
+docker save myapp:latest -o myapp.tar
+docker load -i myapp.tar
+
+# Remove image(s)
+docker rmi myapp:latest
+docker image prune -f       # dangling
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Multi-stage -->
+    <details>
+        <summary>Multi-Stage (Node → Nginx static)</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-multistage">Copy</button>
+            <pre id="docker-multistage"><code># Dockerfile
+FROM node:18-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:80/_health || exit 1
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Dockerfile: minimal API -->
+    <details>
+        <summary>Dockerfile (Minimal Node API)</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-dockerfile-api">Copy</button>
+            <pre id="docker-dockerfile-api"><code># Dockerfile
+FROM node:18-alpine AS deps
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+FROM node:18-alpine
+WORKDIR /app
+ENV NODE_ENV=production PORT=3000
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:3000/_health || exit 1
+CMD ["node","server.js"]
+
+# .dockerignore
+node_modules
+.git
+.DS_Store
+npm-debug.log*
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Compose -->
+    <details>
+        <summary>Docker Compose</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-compose">Copy</button>
+            <pre id="docker-compose"><code># Start/Stop
+docker compose up -d
+docker compose down
+
+# Logs / Restart one service
+docker compose logs -f api
+docker compose restart api
+
+# docker-compose.yml
+version: "3.9"
+services:
+  web:
+    image: nginx:alpine
+    ports: [ "8080:80" ]
+    volumes:
+      - ./public:/usr/share/nginx/html:ro
+  api:
+    build: .
+    environment:
+      - NODE_ENV=production
+    ports: [ "3000:3000" ]
+    depends_on: [ "db" ]
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: example
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Registries -->
+    <details>
+        <summary>Registries (Hub / GHCR / ECR)</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-registries">Copy</button>
+            <pre id="docker-registries"><code># Docker Hub
+docker login -u YOUR_USER
+docker tag myapp:latest YOUR_USER/myapp:latest
+docker push YOUR_USER/myapp:latest
+
+# GHCR (GitHub Container Registry)
+echo $GH_PAT | docker login ghcr.io -u YOUR_GH_USER --password-stdin
+docker tag myapp:latest ghcr.io/YOUR_ORG/myapp:latest
+docker push ghcr.io/YOUR_ORG/myapp:latest
+
+# AWS ECR
+aws ecr get-login-password --region ap-south-1 \
+ | docker login --username AWS --password-stdin 123456789012.dkr.ecr.ap-south-1.amazonaws.com
+docker tag myapp:latest 123456789012.dkr.ecr.ap-south-1.amazonaws.com/app:latest
+docker push 123456789012.dkr.ecr.ap-south-1.amazonaws.com/app:latest
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Volumes & Bind Mounts -->
+    <details>
+        <summary>Volumes & Bind Mounts</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-volumes">Copy</button>
+            <pre id="docker-volumes"><code># Named volume (persistent)
+docker volume create appdata
+docker run -d --name db -v appdata:/var/lib/data alpine
+
+# Bind mount (host folder → container)
+docker run -it --rm -v $PWD:/work -w /work node:18-alpine sh
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Networking -->
+    <details>
+        <summary>Networking</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-net">Copy</button>
+            <pre id="docker-net"><code># Networks
+docker network ls
+docker network create appnet
+docker run -d --name api --network appnet myapp
+docker run -d --name web --network appnet -p 8080:80 nginx:alpine
+
+# Inspect
+docker network inspect appnet
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Buildx & Cache -->
+    <details>
+        <summary>Buildx & Cache</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-buildx">Copy</button>
+            <pre id="docker-buildx"><code># Enable buildx (usually default on modern Docker)
+docker buildx create --use --name builder || true
+docker buildx inspect --bootstrap
+
+# Build with cache + push
+docker buildx build --platform linux/amd64 \
+  --tag ghcr.io/your-org/myapp:latest \
+  --cache-to=type=inline \
+  --cache-from=type=registry,ref=ghcr.io/your-org/myapp:cache \
+  --push .
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Health & Troubleshooting -->
+    <details>
+        <summary>Troubleshooting</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-trouble">Copy</button>
+            <pre id="docker-trouble"><code># Inspect container/image
+docker inspect web
+docker image inspect myapp:latest
+
+# Shell into container
+docker exec -it web sh
+
+# Check ports
+docker ps --format "table {{.Names}}\t{{.Ports}}"
+ss -tulpn | grep -E "docker|:80|:3000"
+
+# Compose specific logs
+docker compose logs -f web
+</code></pre>
+        </div>
+    </details>
+
+    <!-- Cleanup -->
+    <details>
+        <summary>Cleanup</summary>
+        <div class="code">
+            <button class="copy" data-target="docker-clean">Copy</button>
+            <pre id="docker-clean"><code># Containers / images / networks / volumes
+docker container prune -f
+docker image prune -f
+docker volume prune -f
+docker network prune -f
+
+# Remove everything unused (aggressive)
+docker system prune -a --volumes -f
+</code></pre>
+        </div>
+    </details>
+
+</div>
